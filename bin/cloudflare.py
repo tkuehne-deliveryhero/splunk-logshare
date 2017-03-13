@@ -126,6 +126,31 @@ def get_current_datetime_for_cron():
     current_dt = current_dt.replace(second=0, microsecond=0)
     return current_dt
             
+def get_zone_tag(zone_name, headers, backoff_time):
+    zone_tag = None
+    attempts = 25
+
+    while attempts > 0:
+        try:
+            r = requests.get("https://api.cloudflare.com/client/v4/zones", params={'name': zone_name}, headers=headers).json()
+
+            for result in r['result']:
+                zone_tag = result['id']
+                return zone_tag
+ 
+            if not zone_tag:
+                logging.error("Zone not found: %s." % zone_name)
+                sys.exit(2)
+
+        except ValueError,e:
+            logging.error("ValueError while requesting zone data: %s." % zone_name)
+
+        attempts -= 1
+        time.sleep(float(backoff_time))
+
+    logging.error("No valid Zone data returned from API: %s." % zone_name)
+    sys.exit(2)
+
 def do_validate():
     config = get_validation_config() 
     
@@ -157,14 +182,7 @@ def do_run(config):
         "x-auth-key": auth_key,
     }
 
-    zone_tag = None
-    r = requests.get("https://api.cloudflare.com/client/v4/zones", params={'name': zone_name}, headers=headers).json()
-    for result in r['result']:
-        zone_tag = result['id']
-
-    if not zone_tag:
-        logging.error("Zone not found: %s." % zone_name)
-        sys.exit(2)
+    zone_tag = get_zone_tag(zone_name, headers, backoff_time)
 
     try: 
         req_args = {
